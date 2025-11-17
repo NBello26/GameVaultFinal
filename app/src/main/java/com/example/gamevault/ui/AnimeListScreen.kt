@@ -1,4 +1,4 @@
-package com.duoc.menu.ui
+package com.example.gamevault.ui
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
@@ -17,15 +17,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import coil.compose.AsyncImage
+import com.example.gamevault.R
+import com.example.gamevault.data.SharedPreferencesHelper
 import com.example.gamevault.network.Anime
 import com.example.gamevault.network.RetrofitInstance
-import coil.compose.rememberImagePainter
-import com.example.gamevault.R
 import kotlinx.coroutines.launch
-import coil.compose.AsyncImage
+import com.example.gamevault.ui.components.TopBarSection
 
 @Composable
-fun AnimeListScreen(navController: NavController) {
+fun AnimeListScreen(
+    navController: NavController,
+    onLogout: () -> Unit
+) {
+    val context = navController.context
+    val prefs = remember { SharedPreferencesHelper(context) }
+
     var animeList by remember { mutableStateOf<List<Anime>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf("") }
@@ -46,32 +53,23 @@ fun AnimeListScreen(navController: NavController) {
         color = Color(0xFFF3F4F6)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Image(
-                    painter = painterResource(id = R.drawable.logo1),
-                    contentDescription = "Logo Anime",
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                )
-                Spacer(modifier = Modifier.weight(1f))
-                Text(
-                    text = "Animes Populares",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1E88E5)
-                )
-            }
+
+            // 🔵 NUEVO: TopBarSection reutilizable
+            TopBarSection(
+                navController = navController,
+                title = "Animes Populares",
+                prefs = prefs,
+                onLogout = onLogout
+            )
 
             if (isLoading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
             } else if (errorMessage.isNotEmpty()) {
-                Text(text = errorMessage, color = Color.Red, modifier = Modifier.align(Alignment.CenterHorizontally))
+                Text(
+                    text = errorMessage,
+                    color = Color.Red,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
             } else {
                 LazyColumn(modifier = Modifier.padding(16.dp)) {
                     items(animeList) { anime ->
@@ -87,10 +85,11 @@ fun AnimeListScreen(navController: NavController) {
 
 
 
+
 @Composable
 fun AnimePostItem(
     anime: Anime,
-    onViewClick: () -> Unit // 👈 nuevo parámetro para navegar
+    onViewClick: () -> Unit
 ) {
     Surface(
         modifier = Modifier
@@ -100,6 +99,7 @@ fun AnimePostItem(
         color = Color.White
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
+
             AsyncImage(
                 model = anime.image_url,
                 contentDescription = anime.title,
@@ -120,49 +120,24 @@ fun AnimePostItem(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Mostrar géneros
             val genreText = if (anime.genres.isNotEmpty()) {
                 anime.genres.joinToString(", ") { it.name }
             } else {
                 "Sin géneros disponibles"
             }
-            Text(
-                text = "Géneros: $genreText",
-                fontSize = 14.sp,
-                color = Color.Gray
-            )
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Text("Géneros: $genreText", fontSize = 14.sp, color = Color.Gray)
+            Text("Estado: ${anime.status}", fontSize = 14.sp, color = Color.Gray)
 
-            // Mostrar estado
-            Text(
-                text = "Estado: ${anime.status}",
-                fontSize = 14.sp,
-                color = Color.Gray
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Mostrar episodios
             val episodesText = anime.episodes?.toString() ?: "Desconocido"
-            Text(
-                text = "Episodios: $episodesText",
-                fontSize = 14.sp,
-                color = Color.Gray
-            )
+            Text("Episodios: $episodesText", fontSize = 14.sp, color = Color.Gray)
 
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = "Tipo: ${anime.type ?: "Tipo desconocido"}",
-                fontSize = 14.sp,
-                color = Color.Gray
-            )
+            Text("Tipo: ${anime.type ?: "Tipo desconocido"}", fontSize = 14.sp, color = Color.Gray)
 
             Spacer(modifier = Modifier.height(12.dp))
 
             Button(
-                onClick = onViewClick, // 👈 aquí llamamos la función recibida
+                onClick = onViewClick,
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(8.dp),
                 colors = ButtonDefaults.buttonColors(
