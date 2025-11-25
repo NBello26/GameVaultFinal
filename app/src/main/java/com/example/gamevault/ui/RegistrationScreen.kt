@@ -21,13 +21,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.gamevault.R
+import com.example.gamevault.data.NeonDBHelper
 import com.example.gamevault.data.SharedPreferencesHelper
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 @Composable
-fun RegistrationScreen(navController: NavController) {
+fun RegistrationScreen(navController: NavController, prefs: SharedPreferencesHelper) {
 
-    val context = LocalContext.current
-    val prefs = remember { SharedPreferencesHelper(context) }
+    val dbHelper = remember { NeonDBHelper(prefs) } // NeonDB helper
 
     var username by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
@@ -35,6 +38,7 @@ fun RegistrationScreen(navController: NavController) {
     var password2 by remember { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
+    var loading by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -47,7 +51,7 @@ fun RegistrationScreen(navController: NavController) {
             verticalArrangement = Arrangement.spacedBy(15.dp),
             modifier = Modifier.fillMaxWidth(0.85f)
         ) {
-
+            // Logo
             Image(
                 painter = painterResource(id = R.drawable.logo1),
                 contentDescription = "Logo",
@@ -55,16 +59,18 @@ fun RegistrationScreen(navController: NavController) {
             )
 
             Text(
-                "Crear Cuenta",
+                text = "Crear Cuenta",
                 color = Color.White,
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Bold
             )
 
+            // Campos de entrada
             OutlinedTextField(
                 value = username,
                 onValueChange = { username = it },
                 label = { Text("Nombre de usuario") },
+                modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White,
@@ -72,14 +78,14 @@ fun RegistrationScreen(navController: NavController) {
                     unfocusedBorderColor = Color.Gray,
                     focusedLabelColor = Color.White,
                     unfocusedLabelColor = Color.Gray
-                ),
-                modifier = Modifier.fillMaxWidth()
+                )
             )
 
             OutlinedTextField(
                 value = email,
                 onValueChange = { email = it },
-                label = { Text("Correo") },
+                label = { Text("Correo electrónico") },
+                modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White,
@@ -87,8 +93,7 @@ fun RegistrationScreen(navController: NavController) {
                     unfocusedBorderColor = Color.Gray,
                     focusedLabelColor = Color.White,
                     unfocusedLabelColor = Color.Gray
-                ),
-                modifier = Modifier.fillMaxWidth()
+                )
             )
 
             OutlinedTextField(
@@ -101,11 +106,12 @@ fun RegistrationScreen(navController: NavController) {
                     IconButton(onClick = { showPassword = !showPassword }) {
                         Icon(
                             imageVector = if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            tint = Color.White,
-                            contentDescription = null
+                            contentDescription = null,
+                            tint = Color.White
                         )
                     }
                 },
+                modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White,
@@ -113,16 +119,25 @@ fun RegistrationScreen(navController: NavController) {
                     unfocusedBorderColor = Color.Gray,
                     focusedLabelColor = Color.White,
                     unfocusedLabelColor = Color.Gray
-                ),
-                modifier = Modifier.fillMaxWidth()
+                )
             )
 
             OutlinedTextField(
                 value = password2,
                 onValueChange = { password2 = it },
-                label = { Text("Repetir Contraseña") },
+                label = { Text("Repetir contraseña") },
                 visualTransformation =
                     if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { showPassword = !showPassword }) {
+                        Icon(
+                            imageVector = if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                            contentDescription = null,
+                            tint = Color.White
+                        )
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White,
@@ -130,14 +145,14 @@ fun RegistrationScreen(navController: NavController) {
                     unfocusedBorderColor = Color.Gray,
                     focusedLabelColor = Color.White,
                     unfocusedLabelColor = Color.Gray
-                ),
-                modifier = Modifier.fillMaxWidth()
+                )
             )
 
             if (errorMessage.isNotEmpty()) {
                 Text(errorMessage, color = Color.Red)
             }
 
+            // Botón registrar
             Button(
                 onClick = {
                     when {
@@ -151,10 +166,20 @@ fun RegistrationScreen(navController: NavController) {
                             errorMessage = "Las contraseñas no coinciden"
 
                         else -> {
-                            if (prefs.registerUser(email, password, username)) {
-                                navController.navigate("login")
-                            } else {
-                                errorMessage = "El usuario ya existe"
+                            loading = true
+                            errorMessage = ""
+                            CoroutineScope(Dispatchers.IO).launch {
+                                val success = dbHelper.register(email, username, password)
+                                launch(Dispatchers.Main) {
+                                    loading = false
+                                    if (success) {
+                                        navController.navigate("login") {
+                                            popUpTo("register") { inclusive = true }
+                                        }
+                                    } else {
+                                        errorMessage = "El usuario ya existe o hubo un error"
+                                    }
+                                }
                             }
                         }
                     }
@@ -166,13 +191,24 @@ fun RegistrationScreen(navController: NavController) {
                     contentColor = Color.White
                 )
             ) {
-                Text("Registrarse")
+                if (loading) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Creando cuenta...")
+                } else {
+                    Text("Registrarse")
+                }
             }
 
-            TextButton(onClick = { navController.navigate("start") },
+            // Volver
+            TextButton(
+                onClick = { navController.navigate("start") },
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFF6A0DAD),contentColor = Color.White)
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = Color(0xFF6A0DAD),
+                    contentColor = Color.White
+                )
             ) {
                 Text("Volver al inicio", color = Color.White)
             }

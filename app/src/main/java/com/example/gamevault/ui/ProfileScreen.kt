@@ -19,9 +19,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.example.gamevault.data.Comment
+import com.example.gamevault.data.NeonDBHelper
 import com.example.gamevault.data.SharedPreferencesHelper
-import com.example.gamevault.network.RetrofitInstance
 import com.example.gamevault.ui.components.TopBarSection
+import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 
 @Composable
@@ -30,11 +32,17 @@ fun ProfileScreen(
     prefs: SharedPreferencesHelper,
     onLogout: () -> Unit
 ) {
+    val neonHelper = remember { NeonDBHelper(prefs) }
+    val currentUserEmail = neonHelper.getCurrentUser() ?: ""
+    val currentUsername = neonHelper.getCurrentUsername() ?: currentUserEmail
+    val coroutineScope = rememberCoroutineScope()
     val context = navController.context
+
     var profileBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var userComments by remember { mutableStateOf<List<Comment>>(emptyList()) }
 
     // ------------------------------
-    // Cargar foto de perfil
+    // Cargar foto de perfil local
     // ------------------------------
     LaunchedEffect(Unit) {
         prefs.loadProfileImage()?.let { base64 ->
@@ -57,48 +65,32 @@ fun ProfileScreen(
     }
 
     // ------------------------------
-    // Comentarios del usuario
+    // Función para cargar comentarios del usuario
     // ------------------------------
-    val currentUser = prefs.getCurrentUser() ?: ""
-    var userComments by remember { mutableStateOf(prefs.loadAllUserComments(currentUser)) }
-
-    val api = RetrofitInstance.api
-    var animeTitles by remember { mutableStateOf<Map<Int, String>>(emptyMap()) }
-
-    // Cargar nombres desde API
-    LaunchedEffect(userComments) {
-        val ids = userComments.map { it.first }.distinct()
-        val updated = animeTitles.toMutableMap()
-
-        ids.forEach { id ->
-            try {
-                updated[id] = api.getAnimeById(id).data.title
-            } catch (e: Exception) {
-                updated[id] = "Anime $id"
-            }
+    fun loadUserComments() {
+        coroutineScope.launch {
+            userComments = neonHelper.loadUserComments()
         }
-        animeTitles = updated
     }
 
+    LaunchedEffect(currentUserEmail) { loadUserComments() }
+
     // ------------------------------
-    // Estado para editar comentario
+    // Estados para edición y eliminación
     // ------------------------------
     var editDialogVisible by remember { mutableStateOf(false) }
-    var commentToEdit by remember { mutableStateOf<Triple<Int, String, String>?>(null) }
+    var commentToEdit by remember { mutableStateOf<Comment?>(null) }
     var editTitle by remember { mutableStateOf("") }
     var editContent by remember { mutableStateOf("") }
 
-    // ------------------------------
-    // Estado para confirmar eliminación
-    // ------------------------------
     var deleteDialogVisible by remember { mutableStateOf(false) }
-    var commentToDelete by remember { mutableStateOf<Triple<Int, String, String>?>(null) }
+    var commentToDelete by remember { mutableStateOf<Comment?>(null) }
 
-    // ------------------------------
-    // UI
-    // ------------------------------
     Column(modifier = Modifier.fillMaxSize()) {
 
+        // ------------------------------
+        // TopBar con Logout
+        // ------------------------------
         TopBarSection(
             navController = navController,
             title = "Perfil",
@@ -113,15 +105,11 @@ fun ProfileScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
-            // FOTO DE PERFIL
+            // FOTO Y DATOS DEL USUARIO
             item {
-                Card(
-                    modifier = Modifier.size(130.dp),
-                    shape = CircleShape
-                ) {
+                Card(modifier = Modifier.size(130.dp), shape = CircleShape) {
                     Image(
-                        bitmap = (profileBitmap
-                            ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888))
+                        bitmap = (profileBitmap ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888))
                             .asImageBitmap(),
                         contentDescription = "Foto de perfil",
                         modifier = Modifier.fillMaxSize()
@@ -135,19 +123,16 @@ fun ProfileScreen(
                 }
 
                 Spacer(Modifier.height(20.dp))
-
-                Text("Usuario: ${prefs.getUsername(currentUser) ?: currentUser}", style = MaterialTheme.typography.titleMedium)
+                Text("Usuario: $currentUsername", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(6.dp))
-                Text("Correo: $currentUser", style = MaterialTheme.typography.titleMedium)
+                Text("Correo: $currentUserEmail", style = MaterialTheme.typography.titleMedium)
 
                 Spacer(Modifier.height(30.dp))
-
                 Text("Mis Comentarios", style = MaterialTheme.typography.titleLarge)
-
                 Spacer(Modifier.height(10.dp))
             }
 
-            // SI NO HAY COMENTARIOS
+            // MENSAJE SI NO HAY COMENTARIOS
             if (userComments.isEmpty()) {
                 item {
                     Text(
@@ -159,10 +144,7 @@ fun ProfileScreen(
             }
 
             // LISTA DE COMENTARIOS
-            items(userComments) { (animeId, title, content) ->
-
-                val animeTitle = animeTitles[animeId] ?: "Cargando..."
-
+            items(userComments, key = { it.id ?: 0 }) { comment ->
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -173,47 +155,34 @@ fun ProfileScreen(
                     )
                 ) {
                     Column(Modifier.padding(16.dp)) {
-
-                        Text(animeTitle, style = MaterialTheme.typography.titleMedium)
-
-                        Text("Título: $title", style = MaterialTheme.typography.labelSmall)
-
+                        Text("Título: ${comment.title}", style = MaterialTheme.typography.labelSmall)
                         Spacer(Modifier.height(6.dp))
-
-                        Text(content)
-
+                        Text(comment.content)
                         Spacer(Modifier.height(12.dp))
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            // Ir al anime
-                            OutlinedButton(onClick = {
-                                navController.navigate("detail/$animeId")
-                            }) {
+                            OutlinedButton(onClick = { /* Navegar a anime si quieres */ }) {
                                 Text("Ver anime")
                             }
 
-                            // Editar
                             OutlinedButton(onClick = {
-                                commentToEdit = Triple(animeId, title, content)
-                                editTitle = title
-                                editContent = content
+                                commentToEdit = comment
+                                editTitle = comment.title
+                                editContent = comment.content
                                 editDialogVisible = true
                             }) {
                                 Text("Editar")
                             }
 
-                            // Eliminar
                             Button(
                                 onClick = {
-                                    commentToDelete = Triple(animeId, title, content)
+                                    commentToDelete = comment
                                     deleteDialogVisible = true
                                 },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.error
-                                )
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                             ) {
                                 Text("Eliminar")
                             }
@@ -226,9 +195,9 @@ fun ProfileScreen(
         }
     }
 
-    // -----------------------------------
-    // DIALOGO PARA EDITAR COMENTARIO
-    // -----------------------------------
+    // ------------------------------
+    // Dialogo Editar Comentario
+    // ------------------------------
     if (editDialogVisible) {
         AlertDialog(
             onDismissRequest = { editDialogVisible = false },
@@ -252,33 +221,28 @@ fun ProfileScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    commentToEdit?.let { c ->
-                        prefs.updateUserComment(
-                            currentUser,
-                            animeId = c.first,
-                            oldTitle = c.second,
-                            oldContent = c.third,
-                            newTitle = editTitle,
-                            newContent = editContent
-                        )
-                        userComments = prefs.loadAllUserComments(currentUser)
+                    val commentId = commentToEdit?.id ?: return@TextButton
+                    coroutineScope.launch {
+                        val success = neonHelper.updateComment(commentId, editTitle, editContent)
+                        if (success) {
+                            // Actualiza la lista localmente sin recargar
+                            userComments = userComments.map {
+                                if (it.id == commentId) it.copy(title = editTitle, content = editContent) else it
+                            }
+                        }
                     }
                     editDialogVisible = false
-                }) {
-                    Text("Guardar")
-                }
+                }) { Text("Guardar") }
             },
             dismissButton = {
-                TextButton(onClick = { editDialogVisible = false }) {
-                    Text("Cancelar")
-                }
+                TextButton(onClick = { editDialogVisible = false }) { Text("Cancelar") }
             }
         )
     }
 
-    // -----------------------------------
-    // CONFIRMAR BORRADO
-    // -----------------------------------
+    // ------------------------------
+    // Dialogo Eliminar Comentario
+    // ------------------------------
     if (deleteDialogVisible) {
         AlertDialog(
             onDismissRequest = { deleteDialogVisible = false },
@@ -286,25 +250,17 @@ fun ProfileScreen(
             text = { Text("¿Seguro que quieres eliminar este comentario?") },
             confirmButton = {
                 TextButton(onClick = {
-                    commentToDelete?.let { c ->
-                        prefs.deleteUserComment(
-                            currentUser,
-                            c.first,
-                            c.second,
-                            c.third
-                        )
-                        userComments = prefs.loadAllUserComments(currentUser)
+                    val commentId = commentToDelete?.id ?: return@TextButton
+                    coroutineScope.launch {
+                        val success = neonHelper.deleteComment(commentId)
+                        if (success) {
+                            userComments = userComments.filter { it.id != commentId }
+                        }
                     }
                     deleteDialogVisible = false
-                }) {
-                    Text("Eliminar")
-                }
+                }) { Text("Eliminar") }
             },
-            dismissButton = {
-                TextButton(onClick = { deleteDialogVisible = false }) {
-                    Text("Cancelar")
-                }
-            }
+            dismissButton = { TextButton(onClick = { deleteDialogVisible = false }) { Text("Cancelar") } }
         )
     }
 }

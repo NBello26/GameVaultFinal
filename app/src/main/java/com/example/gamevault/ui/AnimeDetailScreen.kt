@@ -21,13 +21,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
 import androidx.navigation.NavController
+import com.example.gamevault.data.Comment
+import com.example.gamevault.data.NeonDBHelper
 import com.example.gamevault.data.SharedPreferencesHelper
 import com.example.gamevault.network.Anime
 import com.example.gamevault.network.RetrofitInstance
 import com.example.gamevault.ui.components.TopBarSection
 import kotlinx.coroutines.launch
-
-data class Comment(val title: String, val content: String, val username: String)
 
 @Composable
 fun AnimeDetailScreen(
@@ -47,14 +47,16 @@ fun AnimeDetailScreen(
     var comments by remember { mutableStateOf(listOf<Comment>()) }
 
     val coroutineScope = rememberCoroutineScope()
+    val dbHelper = remember { NeonDBHelper(prefs) }
 
-    // Cargar comentarios al iniciar
+    // Cargar comentarios online
     LaunchedEffect(Unit) {
-        comments = prefs.loadGlobalComments(animeId)
-            .map { Comment(it.first, it.second, prefs.getUsername(it.third) ?: it.third) }
+        coroutineScope.launch {
+            comments = dbHelper.loadCommentsByAnime(animeId)
+        }
     }
 
-    // Llamada API
+    // Llamada API para los detalles del anime
     LaunchedEffect(animeId) {
         coroutineScope.launch {
             try {
@@ -100,6 +102,7 @@ fun AnimeDetailScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         item {
+                            // Detalles del anime
                             Card(
                                 shape = RoundedCornerShape(16.dp),
                                 elevation = CardDefaults.cardElevation(6.dp),
@@ -136,9 +139,7 @@ fun AnimeDetailScreen(
                                         )
 
                                         if (synopsis.length > 200) {
-                                            TextButton(onClick = {
-                                                showFullSynopsis = !showFullSynopsis
-                                            }) {
+                                            TextButton(onClick = { showFullSynopsis = !showFullSynopsis }) {
                                                 Text(if (showFullSynopsis) "Ver menos" else "Ver más")
                                             }
                                         }
@@ -204,6 +205,7 @@ fun AnimeDetailScreen(
                         }
                     }
 
+                    // Botón para agregar comentario
                     FloatingActionButton(
                         onClick = { showCommentDialog = true },
                         modifier = Modifier
@@ -214,6 +216,7 @@ fun AnimeDetailScreen(
                         Icon(Icons.Default.Add, contentDescription = "Agregar", tint = Color.White)
                     }
 
+                    // Diálogo para agregar comentario
                     if (showCommentDialog) {
                         var commentTitle by remember { mutableStateOf("") }
                         var commentContent by remember { mutableStateOf("") }
@@ -223,13 +226,19 @@ fun AnimeDetailScreen(
                             confirmButton = {
                                 TextButton(onClick = {
                                     if (commentTitle.isNotBlank() && commentContent.isNotBlank()) {
-                                        prefs.saveComment(animeId, commentTitle, commentContent)
-                                        comments = comments + Comment(commentTitle, commentContent, prefs.getCurrentUsername() ?: "Anon")
-                                        showCommentDialog = false
+                                        coroutineScope.launch {
+                                            val success = dbHelper.saveComment(animeId, commentTitle, commentContent)
+                                            if (success) {
+                                                comments = dbHelper.loadCommentsByAnime(animeId)
+                                                showCommentDialog = false
+                                            }
+                                        }
                                     }
                                 }) { Text("Agregar") }
                             },
-                            dismissButton = { TextButton(onClick = { showCommentDialog = false }) { Text("Cancelar") } },
+                            dismissButton = {
+                                TextButton(onClick = { showCommentDialog = false }) { Text("Cancelar") }
+                            },
                             title = { Text("Nuevo comentario") },
                             text = {
                                 Column {

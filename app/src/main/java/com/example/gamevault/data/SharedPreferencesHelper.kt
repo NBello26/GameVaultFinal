@@ -163,4 +163,19 @@ class SharedPreferencesHelper(context: Context) {
         val rawUser = prefs.getString(userKey, "") ?: ""
         prefs.edit().putString(userKey, rawUser.replace(old, new)).apply()
     }
+
+    fun saveCurrentUser(email: String, username: String) {
+        val editor = prefs.edit()
+        editor.putString("logged_user", email)
+        editor.putString("current_username", username)
+        editor.apply()
+    }
+
+    fun clearCurrentUser() {
+        val editor = prefs.edit()
+        editor.remove("logged_user")
+        editor.remove("current_username")
+        editor.apply()
+    }
+
 }

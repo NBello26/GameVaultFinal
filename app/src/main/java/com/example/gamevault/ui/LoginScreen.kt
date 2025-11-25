@@ -21,18 +21,26 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.gamevault.R
+import com.example.gamevault.data.NeonDBHelper
 import com.example.gamevault.data.SharedPreferencesHelper
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 @Composable
-fun LoginScreen(navController: NavController, onLoginSuccess: () -> Unit) {
-
+fun LoginScreen(
+    navController: NavController,
+    onLoginSuccess: () -> Unit
+) {
     val context = LocalContext.current
     val prefs = remember { SharedPreferencesHelper(context) }
+    val dbHelper = remember { NeonDBHelper(prefs) } // NeonDB online + sesión local
 
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
+    var loading by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -107,14 +115,22 @@ fun LoginScreen(navController: NavController, onLoginSuccess: () -> Unit) {
 
             Button(
                 onClick = {
-                    if (prefs.login(email, password)) {
-                        // Ya guarda automáticamente el usuario logueado y su username
-                        onLoginSuccess()
-                        navController.navigate("home") {
-                            popUpTo("login") { inclusive = true }
+                    loading = true
+                    errorMessage = ""
+                    // login online + guardar sesión local
+                    CoroutineScope(Dispatchers.IO).launch {
+                        val success = dbHelper.login(email, password)
+                        launch(Dispatchers.Main) {
+                            loading = false
+                            if (success) {
+                                onLoginSuccess() // actualiza isLoggedIn en MainActivity
+                                navController.navigate("home") {
+                                    popUpTo("login") { inclusive = true }
+                                }
+                            } else {
+                                errorMessage = "Usuario o contraseña incorrectos"
+                            }
                         }
-                    } else {
-                        errorMessage = "Credenciales incorrectas"
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -124,7 +140,13 @@ fun LoginScreen(navController: NavController, onLoginSuccess: () -> Unit) {
                     contentColor = Color.White
                 )
             ) {
-                Text("Entrar")
+                if (loading) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Cargando...")
+                } else {
+                    Text("Entrar")
+                }
             }
 
             TextButton(

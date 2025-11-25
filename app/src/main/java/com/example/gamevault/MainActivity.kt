@@ -9,32 +9,33 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.gamevault.data.NeonDBHelper
 import com.example.gamevault.data.SharedPreferencesHelper
+import com.example.gamevault.data.LoggedUser
 import com.example.gamevault.ui.*
 import com.example.gamevault.ui.theme.GameVaultTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         enableEdgeToEdge()
 
         setContent {
             GameVaultTheme {
 
                 val navController = rememberNavController()
-                val prefs = remember { SharedPreferencesHelper(this) }
+                val prefs = remember { SharedPreferencesHelper(this) } // helper local
+                val neonHelper = remember { NeonDBHelper(prefs) }
 
-                var isLoggedIn by remember { mutableStateOf(prefs.isLoggedIn()) }
+                // Estado de sesión
+                var isLoggedIn by remember { mutableStateOf(LoggedUser.isLoggedIn() || prefs.getCurrentUser() != null) }
 
                 Scaffold(
                     bottomBar = {
@@ -72,44 +73,44 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.padding(innerPadding)
                     ) {
 
-                        // Pantalla inicial (Start)
+                        // PANTALLAS SIN NAVBAR
                         composable("start") {
                             StartScreen(navController)
                         }
 
-                        // Login
                         composable("login") {
                             LoginScreen(navController) {
                                 isLoggedIn = true
                             }
                         }
 
-                        // Registro
                         composable("register") {
-                            RegistrationScreen(navController)
+                            RegistrationScreen(navController, prefs)
                         }
 
-                        // Home (lista de animes)
+                        // PANTALLAS CON NAVBAR
                         composable("home") {
                             AnimeListScreen(navController) {
+                                neonHelper.logout()
                                 isLoggedIn = false
+                                navController.navigate("start") { popUpTo("home") { inclusive = true } }
                             }
                         }
 
-                        // Buscador
                         composable("search") {
                             AnimeSearchScreen(navController) {
+                                neonHelper.logout()
                                 isLoggedIn = false
+                                navController.navigate("start") { popUpTo("home") { inclusive = true } }
                             }
                         }
 
-                        // Perfil
                         composable("profile") {
                             ProfileScreen(
                                 navController = navController,
                                 prefs = prefs,
                                 onLogout = {
-                                    prefs.logout()
+                                    neonHelper.logout()
                                     isLoggedIn = false
                                     navController.navigate("start") {
                                         popUpTo("home") { inclusive = true }
@@ -118,17 +119,15 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        // Detalle anime
                         composable("detail/{animeId}") { backStackEntry ->
                             val animeId = backStackEntry.arguments?.getString("animeId")?.toIntOrNull()
-
                             animeId?.let {
                                 AnimeDetailScreen(
                                     navController = navController,
                                     animeId = it,
                                     prefs = prefs,
                                     onLogout = {
-                                        prefs.logout()
+                                        neonHelper.logout()
                                         isLoggedIn = false
                                         navController.navigate("start") {
                                             popUpTo("home") { inclusive = true }
